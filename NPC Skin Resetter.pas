@@ -1,6 +1,11 @@
 unit userscript;
 
 procedure ReplaceFaceTintPath(faceMeshPath, faceTextureFullPath: string);
+// Tint以外のテクスチャパスをすべてデフォルト参照へ変更する
+// 方針：ループ処理でBSShaderTextureSetブロックを探し、Textures配列の末尾ファイル名で処理変更（？）
+// 末尾以外基本的に同じはずだからそんなに難しくないかも
+// 男性女性でパスは変わるからそこは要判定、引数で男女判定渡したほうがいいかも
+// すでにデフォルト参照だった場合は処理をスキップする
 var
   nif              : TwbNifFile;
   nifBlock         : TwbNifBlock;
@@ -76,10 +81,18 @@ end;
 
 function Initialize: integer;
 begin
+  // ユーザに色々尋ねる処理
+  // Worn Armorを削除する?
+  // 対象のNPCはカスタム種族?
   Result := 0;
 end;
 
 function Process(e: IInterface): integer;
+// NPCのレコードかどうか判定
+// 男女の判定
+// Worn Armorの削除、初期化処理のオプションに従う
+// カスタム種族だった場合、RaceレコードのWorn Armorをデフォルト参照にする。
+// デフォルト参照が種族で変わる場合、方針をどうするべきか。基本はノルドでいいかな
 begin
   Result := 0;
 end;
