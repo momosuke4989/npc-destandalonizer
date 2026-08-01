@@ -1,3 +1,5 @@
+unit userscript;
+
 procedure ReplaceFaceTintPath(faceMeshPath, faceTextureFullPath: string);
 var
   nif              : TwbNifFile;
@@ -71,3 +73,20 @@ begin
     nif.Free;
   end;
 end;
+
+function Initialize: integer;
+begin
+  Result := 0;
+end;
+
+function Process(e: IInterface): integer;
+begin
+  Result := 0;
+end;
+
+function Finalize: integer;
+begin
+  Result := 0;
+end;
+
+end.
