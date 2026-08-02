@@ -23,6 +23,7 @@ begin
     nif := TwbNifFile.Create;
     nif.LoadFromFile(faceMeshPath);
 
+    AddMessage('debug lTextureList');
     lTextureList := TList.Create;
     slFileNameList := TStringList.Create;
 
@@ -40,12 +41,15 @@ begin
     end;
     slFileNameList.add('BlankDetailmap.dds');
 
+    AddMessage('Processing FaceGen NIF: ' + faceMeshPath);
 
     // デフォルトのテクスチャパスを取得する
     if isFemale then
       defaultTexturePath := FACEGEN_TEXTURE_PATH_FEMALE
     else
       defaultTexturePath := FACEGEN_TEXTURE_PATH_MALE;
+
+    AddMessage('set default texture path: ' + defaultTexturePath);
 
     // Iterate over all blocks in a nif file and locate elements holding textures.
     for i := 0 to nif.BlocksCount - 1 do begin
@@ -96,6 +100,7 @@ begin
     slFileNameList.Free;
     nif.Free;
   end;
+  AddMessage('ReplaceFaceGenTexturePath finished.');
 end;
 
 function Initialize: integer;
@@ -138,7 +143,8 @@ end;
 
 function Process(e: IInterface): integer;
 var npcRecord, npcFlags: IInterface;
-    isFemale: Boolean;
+    npcFlagsNative: Cardinal;
+    isFemale, useTraitsFlag: Boolean;
     pluginName, faceMeshPath, formID: string;
 
 begin
@@ -149,10 +155,20 @@ begin
   end;
 
   npcRecord := e;
-  pluginName := GetFileName(GetFile(npcRecord));
+  pluginName := GetFileName(GetFile(masterOrSelf(npcRecord)));
   formID := IntToHex64(GetElementNativeValues(npcRecord, 'Record Header\FormID') and  $FFFFFF, 8);
   faceMeshPath := Format('%smeshes\actors\character\FaceGenData\FaceGeom\%s\%s.nif', [DataPath, pluginName, formID]);
-  npcFlags  := ElementByPath(npcRecord, 'ACBS - Configuration');
+  npcFlags  := ElementByPath(npcRecord, 'ACBS');
+
+  //AddMessage('NPC Flags: ' + GetElementEditValues(npcFlags, 'Flags'));
+  npcFlagsNative := GetElementNativeValues(ElementBySignature(npcRecord, 'ACBS'), 'Template Flags');
+  if (npcFlagsNative and $01) <> 0 then
+    useTraitsFlag := true;
+
+  if useTraitsFlag then begin
+    AddMessage(GetElementEditValues(npcRecord, 'EDID') + ' uses the useTraits flag. Processing will be skipped.');
+    Exit;
+  end;
 
   // 男女の判定
   isFemale := GetElementEditValues(npcFlags, 'Flags\Female') = '1';
@@ -175,12 +191,8 @@ begin
     AddMessage(GetElementEditValues(npcRecord, 'EDID') + ' is a custom race.');
   end;
 
-
+  AddMessage(GetElementEditValues(npcRecord, 'EDID') + ' - ' + faceMeshPath);
   ReplaceFaceGenTexturePath(faceMeshPath, isFemale);
-
-
-
-// Worn Armorの削除、初期化処理のオプションに従う
 
   Result := 0;
 end;
