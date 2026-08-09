@@ -3,12 +3,14 @@ unit NPC_DeStandalonizer;
 const
   FACEGEN_TEXTURE_PATH_FEMALE = 'textures\actors\character\female';
   FACEGEN_TEXTURE_PATH_MALE   = 'textures\actors\character\male';
+  FACEGEN_TEXTURE_PATH_MSN    = 'textures\actors\character';
   FACEGEN_TEXTURE_PATH_BLANK  = 'textures\actors\Character\Male\BlankDetailmap.dds';
 
 var
-  keepWNAMNPC, isCustomRace: boolean;
+ slBasicRaceList: TStringList;
+ isUniqueRace: boolean;
 
-procedure ReplaceFaceGenTexturePath(faceMeshPath: string; isFemale: boolean);
+procedure ReplaceFaceGenTexturePath(faceMeshPath, raceName: string; isFemale: boolean);
 var
   nif              : TwbNifFile;
   nifBlock         : TwbNifBlock;
@@ -17,7 +19,7 @@ var
   slFileNameList   : TStringList;
   i, j             : Integer;
   defaultTexturePath,
-  oldTexturePath, newTexturePath  : string;
+  oldTexturePath, newTexturePath, msnTexturePath  : string;
 begin
   try
     nif := TwbNifFile.Create;
@@ -43,10 +45,22 @@ begin
     AddMessage('Processing FaceGen NIF: ' + faceMeshPath);
 
     // デフォルトのテクスチャパスを取得する
-    if isFemale then
-      defaultTexturePath := FACEGEN_TEXTURE_PATH_FEMALE
-    else
+    if isFemale then begin
+      defaultTexturePath := FACEGEN_TEXTURE_PATH_FEMALE;
+      if (raceName = 'Nord') or isUniqueRace = true then
+        msnTexturePath := FACEGEN_TEXTURE_PATH_MSN + '\Female\Femalehead_msn.dds'
+      else if raceName = 'WoodElf' then
+        msnTexturePath := FACEGEN_TEXTURE_PATH_MSN + '\HighElfFemale\Femalehead_msn.dds'
+      else
+        msnTexturePath := FACEGEN_TEXTURE_PATH_MSN + '\' + raceName + 'Female\Femalehead_msn.dds';
+    end
+    else begin
       defaultTexturePath := FACEGEN_TEXTURE_PATH_MALE;
+      if (raceName = 'Nord') or isUniqueRace =true then
+        msnTexturePath := FACEGEN_TEXTURE_PATH_MSN + '\Male\Malehead_msn.dds'
+      else
+        msnTexturePath := FACEGEN_TEXTURE_PATH_MSN + '\' + raceName + 'Male\Malehead_msn.dds';
+    end;
 
     AddMessage('set default texture path: ' + defaultTexturePath);
 
@@ -82,11 +96,18 @@ begin
         if SameText(ExtractFileName(element.EditValue), ExtractFileName(FACEGEN_TEXTURE_PATH_BLANK)) then begin
           newTexturePath := FACEGEN_TEXTURE_PATH_BLANK;
         end
+        else if SameText(ExtractFileName(element.EditValue), ExtractFileName(msnTexturePath)) then begin
+          newTexturePath := msnTexturePath;
+        end
         else begin
           newTexturePath := defaultTexturePath + '\' + ExtractFileName(oldTexturePath);
         end;
+
         if SameText(oldTexturePath, newTexturePath) then
+        begin
+          AddMessage('This Texture path is already dfault:' + oldTexturePath);
           continue;
+        end;
 
         element.EditValue := newTexturePath;
         AddMessage('Change FaceGen Skin Texture Path: ' + oldTexturePath + ' -> ' + newTexturePath);
@@ -104,47 +125,34 @@ end;
 
 function Initialize: integer;
 begin
-  // ユーザに色々尋ねる処理
-  // NPCレコードからWorn Armorを削除する?
-  if MessageDlg(
-    'Do you want to maintain the NPC''s body shape?' + #13#10 +
-    'Yes = Change the Worn Armor skin texture reference to default' + #13#10 +
-    'No = Remove the Worn Armor element and use the race''s body shape and skin.', mtConfirmation, [mbYes, mbNo], 0
-  ) = mrYes then
-  keepWNAMNPC := true;
+  slBasicRaceList := TStringList.Create;
+  slBasicRaceList.Add('KhajiitRace');
+  slBasicRaceList.Add('ArgonianRace');
+  slBasicRaceList.Add('BretonRace');
+  slBasicRaceList.Add('DarkElfRace');
+  slBasicRaceList.Add('HighElfRace');
+  slBasicRaceList.Add('ImperialRace');
+  slBasicRaceList.Add('NordRace');
+  slBasicRaceList.Add('OrcRace');
+  slBasicRaceList.Add('RedguardRace');
+  slBasicRaceList.Add('WoodElfRace');
 
-  // 対象のNPCはカスタム種族?
-  // カスタム種族だった場合、デフォルトのSkinNakedはカスタム種族に対応していないのでWNAMの変更は難しい
-  // テクスチャの参照先をデフォルト化する方法しか取れそうにない
-  // 方針：Armatureリストを走査して、編集中のespファイル内に存在するArmatureがあればテクスチャ参照先をデフォルトに変更する
-  // 外部espのArmatureを参照している場合はこのスクリプトの対象外とする。思わぬ編集をしてしまう事故が怖い。
-  // NPCのWNAMのテクスチャ参照変更も同様の処理になりそうだ
-  // 前提として獣人種族は非対応としたほうが無難か。そもそも需要ない気もする
-  //1. 「編集中のespファイル内に存在する」の判定基準が甘い
-  //masterofselfの判定導入する
-  //2. TXST参照の差し替えが「効くケース」と「効かないケース」がある
-  //ボディに関してはArmor Addonレコードにテクスチャセットの参照が設定されていたら「効く」はず
-  //FaceGenは効かないのでnifを直接編集する必要がある
-  //3. UVレイアウトの不一致リスク
-  //スクリプト実行時の注意点として事前に周知し、ボディメッシュのタイプを一致させるのはユーザの責任とする
-  //4. 性別・パーツ単位の網羅
-  //男女、1st/3rd確認
-  //5. 獣人除外の判定方法
-  //3と同様、ユーザの責任で判断してもらう
+  isUniqueRace := false;
   if MessageDlg(
-    'Is the NPC''s race a custom race?' + #13#10 +
-    'Races such as CoTR and UBE are also included in the custom races.' + #13#10
+    'Is the NPC''s race a unique race?' + #13#10 +
+    'Select "Yes" if it is a race used exclusively by that NPC-meaning it is not a race like CoTR or UBE.' + #13#10
     , mtConfirmation, [mbYes, mbNo], 0
   ) = mrYes then
-  isCustomRace := true;
+  isUniqueRace := true;
   Result := 0;
 end;
 
 function Process(e: IInterface): integer;
-var npcRecord, npcFlags: IInterface;
-    npcFlagsNative: Cardinal;
-    isFemale, useTraitsFlag: Boolean;
-    pluginName, faceMeshPath, formID: string;
+var npcRecord, npcFlags, npcRace, raceWNAM, armorAddonRef: IInterface;
+    npcRaceRecord, raceWNAMRecord: IwbMainRecord;
+    npcFlagsNative, i: Cardinal;
+    isFemale, useTraitsFlag, isHumanoidRace: Boolean;
+    pluginName, faceMeshPath, formID, raceName: string;
 
 begin
   // NPCのレコードかどうか判定
@@ -154,20 +162,46 @@ begin
   end;
 
   npcRecord := e;
+  npcRace := ElementByPath(npcRecord, 'RNAM');
+  npcRaceRecord := MasterOrSelf(LinksTo(npcRace));
+  npcFlagsNative := GetElementNativeValues(ElementBySignature(npcRecord, 'ACBS'), 'Template Flags');
+
+  // UseTraitsフラグが立っている場合は処理をスキップする
+  if (npcFlagsNative and $01) <> 0 then begin
+    AddMessage(GetElementEditValues(npcRecord, 'EDID') + ' uses the useTraits flag. Processing will be skipped.');
+    Exit;
+  end;
+
+  // ユニーク種族でない場合は、基本種族かどうかを判定し、獣人種族または基本種族でない場合は処理をスキップする
+  if not isUniqueRace then begin
+    // Check if the NPC's race is a basic race
+    for i := 0 to slBasicRaceList.Count - 1 do
+    begin
+      if SameText(GetElementEditValues(npcRaceRecord, 'EDID'), slBasicRaceList[i]) then
+      begin
+        if SameText(slBasicRaceList[i], 'KhajiitRace') or SameText(slBasicRaceList[i], 'ArgonianRace') then
+        begin
+          AddMessage(GetElementEditValues(npcRaceRecord, 'EDID') + ' is a beast race. Processing will be skipped.');
+          Exit;
+        end
+        else begin
+          AddMessage(GetElementEditValues(npcRaceRecord, 'EDID') + ' is a basic humanoid race.');
+          isHumanoidRace := true;
+          raceName := Copy(slBasicRaceList[i], 1, Length(slBasicRaceList[i]) - 4);
+          Break;
+        end;
+      end;
+    end;
+    if not isHumanoidRace then begin
+      AddMessage(GetElementEditValues(npcRaceRecord, 'EDID') + ' is not a basic humanoid race. Processing will be skipped.');
+      Exit;
+    end;
+  end;
+
   pluginName := GetFileName(GetFile(masterOrSelf(npcRecord)));
   formID := IntToHex64(GetElementNativeValues(npcRecord, 'Record Header\FormID') and  $FFFFFF, 8);
   faceMeshPath := Format('%smeshes\actors\character\FaceGenData\FaceGeom\%s\%s.nif', [DataPath, pluginName, formID]);
   npcFlags  := ElementByPath(npcRecord, 'ACBS');
-
-  //AddMessage('NPC Flags: ' + GetElementEditValues(npcFlags, 'Flags'));
-  npcFlagsNative := GetElementNativeValues(ElementBySignature(npcRecord, 'ACBS'), 'Template Flags');
-  if (npcFlagsNative and $01) <> 0 then
-    useTraitsFlag := true;
-
-  if useTraitsFlag then begin
-    AddMessage(GetElementEditValues(npcRecord, 'EDID') + ' uses the useTraits flag. Processing will be skipped.');
-    Exit;
-  end;
 
   // 男女の判定
   isFemale := GetElementEditValues(npcFlags, 'Flags\Female') = '1';
@@ -178,26 +212,35 @@ begin
     AddMessage(GetElementEditValues(npcRecord, 'EDID') + ' is Male');
   end;
 
-  // test code
-  if keepWNAMNPC then begin
-    AddMessage(GetElementEditValues(npcRecord, 'EDID') + ' will maintain the NPC''s body shape.');
-  end
-  else begin
-    AddMessage(GetElementEditValues(npcRecord, 'EDID') + ' will remove the Worn Armor element and use the race''s body shape and skin.');
+  // FaceGenのテクスチャパスを置換する
+  ReplaceFaceGenTexturePath(faceMeshPath, raceName, isFemale);
+
+  // ボディの処理
+  // NPCレコードのWNAMを削除
+  RemoveElement(npcRecord, 'WNAM');
+  AddMessage('NPC WNAM fieald was Removed');
+{
+  // ユニーク種族の場合は、種族に設定されたWNAMからさかのぼってArmorAddonを取得し、その参照先を変更する
+  if isUniqueRace then begin
+    // ユニーク種族のWNAMを取得
+    raceWNAM := ElementByPath(npcRaceRecord, 'WNAM');
+    if not Assigned(raceWNAM) then begin
+      AddMessage(GetElementEditValues(npcRaceRecord, 'EDID') + ' does not have a WNAM. Processing will be skipped.');
+      Exit;
+    end;
+    raceWNAMRecord := MasterOrSelf(LinksTo(raceWNAM));
+
+    // raceWNAMRecordのArmotureリストから、同一esp内で定義されているArmorAddonを取得
+
   end;
-
-  if isCustomRace then begin
-    AddMessage(GetElementEditValues(npcRecord, 'EDID') + ' is a custom race.');
-  end;
-
-  ReplaceFaceGenTexturePath(faceMeshPath, isFemale);
-
+}
   Result := 0;
 end;
 
 function Finalize: integer;
 begin
   Result := 0;
+  slBasicRaceList.Free;
 end;
 
 end.
