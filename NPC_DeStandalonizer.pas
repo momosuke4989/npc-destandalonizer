@@ -1,4 +1,4 @@
-unit userscript;
+unit NPC_DeStandalonizer;
 
 const
   FACEGEN_TEXTURE_PATH_FEMALE = 'textures\actors\character\female';
@@ -23,7 +23,6 @@ begin
     nif := TwbNifFile.Create;
     nif.LoadFromFile(faceMeshPath);
 
-    AddMessage('debug lTextureList');
     lTextureList := TList.Create;
     slFileNameList := TStringList.Create;
 
@@ -191,7 +190,6 @@ begin
     AddMessage(GetElementEditValues(npcRecord, 'EDID') + ' is a custom race.');
   end;
 
-  AddMessage(GetElementEditValues(npcRecord, 'EDID') + ' - ' + faceMeshPath);
   ReplaceFaceGenTexturePath(faceMeshPath, isFemale);
 
   Result := 0;
