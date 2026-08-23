@@ -6,6 +6,12 @@ const
   FACEGEN_TEXTURE_PATH_MSN    = 'textures\actors\character';
   FACEGEN_TEXTURE_PATH_BLANK  = 'textures\actors\Character\Male\BlankDetailmap.dds';
 
+  TEX_SLOT_DIFFUSE    = 0;
+  TEX_SLOT_NORMAL     = 1;
+  TEX_SLOT_SUBSURFACE = 2;
+  TEX_SLOT_DETAIL     = 3;
+  TEX_SLOT_SPECULAR   = 7;
+
   NAKED_TORSO_NIF_PATH_MALE   = 'Actors\Character\Character Assets\MaleBody_1.NIF';
   NAKED_TORSO_NIF_PATH_FEMALE = 'Actors\Character\Character Assets\FemaleBody_1.NIF';
   NAKED_FEET_NIF_PATH_MALE    = 'Actors\Character\Character Assets\MaleFeet_1.NIF';
@@ -25,14 +31,15 @@ var
 
 procedure ReplaceFaceGenTexturePath(faceMeshPath, raceName: string; isFemale: boolean);
 var
-  nif              : TwbNifFile;
-  nifBlock         : TwbNifBlock;
-  element          : TdfElement;
-  lTextureList     : TList;
-  slFileNameList   : TStringList;
-  i, j             : Integer;
-  defaultTexturePath,
-  oldTexturePath, newTexturePath, msnTexturePath  : string;
+  nif                   : TwbNifFile;
+  nifBlock, shaderProp,
+  textureSetBlock       : TwbNifBlock;
+  element, texElement   : TdfElement;
+  lTextureList          : TList;
+  i, j                  : Integer;
+  headKey, fileName,
+  defaultTexturePath, oldTexturePath,
+  newTexturePath, msnTexturePath  : string;
   texturePathChanged : boolean;
 begin
   if not FileExists(faceMeshPath) then begin
@@ -47,21 +54,11 @@ begin
     nif.LoadFromFile(faceMeshPath);
 
     lTextureList := TList.Create;
-    slFileNameList := TStringList.Create;
 
-    if isFemale then begin
-      slFileNameList.add('femalehead.dds');
-      slFileNameList.add('femalehead_msn.dds');
-      slFileNameList.add('femalehead_sk.dds');
-      slFileNameList.add('femalehead_s.dds');
-    end
-    else begin
-      slFileNameList.add('malehead.dds');
-      slFileNameList.add('malehead_msn.dds');
-      slFileNameList.add('malehead_sk.dds');
-      slFileNameList.add('malehead_s.dds');
-    end;
-    slFileNameList.add('BlankDetailmap.dds');
+    if isFemale then
+      headKey := 'femalehead'
+    else
+      headKey := 'malehead';
 
     AddMessage('Processing FaceGen NIF: ' + faceMeshPath);
 
@@ -69,34 +66,39 @@ begin
     if isFemale then begin
       defaultTexturePath := FACEGEN_TEXTURE_PATH_FEMALE;
       if raceName = 'Nord' then
-        msnTexturePath := FACEGEN_TEXTURE_PATH_MSN + '\Female\Femalehead_msn.dds'
+        msnTexturePath := FACEGEN_TEXTURE_PATH_MSN + '\Female\femalehead_msn.dds'
       else if raceName = 'WoodElf' then
-        msnTexturePath := FACEGEN_TEXTURE_PATH_MSN + '\HighElfFemale\Femalehead_msn.dds'
+        msnTexturePath := FACEGEN_TEXTURE_PATH_MSN + '\HighElfFemale\femalehead_msn.dds'
       else
-        msnTexturePath := FACEGEN_TEXTURE_PATH_MSN + '\' + raceName + 'Female\Femalehead_msn.dds';
+        msnTexturePath := FACEGEN_TEXTURE_PATH_MSN + '\' + raceName + 'Female\femalehead_msn.dds';
     end
     else begin
       defaultTexturePath := FACEGEN_TEXTURE_PATH_MALE;
       if raceName = 'Nord' then
-        msnTexturePath := FACEGEN_TEXTURE_PATH_MSN + '\Male\Malehead_msn.dds'
+        msnTexturePath := FACEGEN_TEXTURE_PATH_MSN + '\Male\malehead_msn.dds'
       else
-        msnTexturePath := FACEGEN_TEXTURE_PATH_MSN + '\' + raceName + 'Male\Malehead_msn.dds';
+        msnTexturePath := FACEGEN_TEXTURE_PATH_MSN + '\' + raceName + 'Male\malehead_msn.dds';
     end;
 
     AddMessage('set default texture path: ' + defaultTexturePath);
 
-    // NIFファイルのすべてのブロックを反復処理し、テクスチャを保持している要素を特定。
     for i := 0 to nif.BlocksCount - 1 do begin
-        nifBlock := nif.Blocks[i];
-
-        if nifBlock.BlockType = 'BSShaderTextureSet' then begin
-            element := nifBlock.Elements['Textures'];
+      nifBlock := nif.Blocks[i];
+      // AddMessage('[' + IntToStr(i) + '] BlockType=' + nifBlock.BlockType + ' Name=' + nifBlock.EditValues['Name']);
+      if nifBlock.IsNiObject('BSDynamicTriShape', True) then begin
+        // AddMessage('  Passed IsNiObject check');
+        if IsFaceGenHeadShape(nifBlock) then begin
+          // AddMessage('  Passed IsFaceGenHeadShape check.');
+          shaderProp := nifBlock.PropertyByType('BSLightingShaderProperty', True);
+          textureSetBlock := TwbNifBlock(shaderProp.Elements['Texture Set'].LinksTo);
+          if Assigned(textureSetBlock) then begin
+            element := textureSetBlock.Elements['Textures'];
             for j := 0 to element.Count - 1 do
-                lTextureList.Add(element[j]);
+              lTextureList.Add(element[j]);
+          end;
         end;
+      end;
     end;
-
-    //AddMessage(Format('Found %d elements.', [Elements.Count]));
 
     // テクスチャセットを持たない場合はスキップ
     if lTextureList.Count = 0 then begin
@@ -114,29 +116,42 @@ begin
       if element.EditValue = '' then
         continue;
 
-      if slFileNameList.IndexOf(ExtractFileName(element.EditValue)) >= 0 then begin
-        oldTexturePath := element.EditValue;
-        if SameText(ExtractFileName(element.EditValue), ExtractFileName(FACEGEN_TEXTURE_PATH_BLANK)) then begin
-          newTexturePath := FACEGEN_TEXTURE_PATH_BLANK;
-        end
-        else if SameText(ExtractFileName(element.EditValue), ExtractFileName(msnTexturePath)) then begin
-          newTexturePath := msnTexturePath;
-        end
-        else begin
-          newTexturePath := defaultTexturePath + '\' + ExtractFileName(oldTexturePath);
+      element := textureSetBlock.Elements['Textures'];
+
+        if (i <> TEX_SLOT_DIFFUSE) and (i <> TEX_SLOT_NORMAL) and
+           (i <> TEX_SLOT_SUBSURFACE) and (i <> TEX_SLOT_DETAIL) and (i <> TEX_SLOT_SPECULAR) then
+          continue;
+
+        texElement := TdfElement(element[i]);
+        if texElement.EditValue = '' then
+          continue;
+
+        oldTexturePath := texElement.EditValue;
+        fileName := ExtractFileName(oldTexturePath);
+
+        case i of
+          TEX_SLOT_DIFFUSE:
+            newTexturePath := defaultTexturePath + '\' + headKey + '.dds';
+          TEX_SLOT_NORMAL:
+            newTexturePath := msnTexturePath;
+          TEX_SLOT_SUBSURFACE:
+            newTexturePath := defaultTexturePath + '\' + headKey + '_sk.dds';
+          TEX_SLOT_SPECULAR:
+            newTexturePath := defaultTexturePath + '\' + headKey + '_S.dds';
+          TEX_SLOT_DETAIL:
+            newTexturePath := FACEGEN_TEXTURE_PATH_BLANK;
         end;
 
-        if SameText(oldTexturePath, newTexturePath) then
-        begin
-          AddMessage('This Texture path is already default:' + oldTexturePath);
+        if SameText(oldTexturePath, newTexturePath) then begin
+          AddMessage('This Texture path is already default: ' + oldTexturePath);
           continue;
         end;
 
-        element.EditValue := newTexturePath;
+        texElement.EditValue := newTexturePath;
         AddMessage('Change FaceGen Skin Texture Path: ' + oldTexturePath + ' -> ' + newTexturePath);
         texturePathChanged := true;
-      end;
     end;
+
     if texturePathChanged then begin
       if not FileExists(faceMeshPath + '.bak') then
         CopyFile(faceMeshPath, faceMeshPath + '.bak', false)
@@ -147,7 +162,6 @@ begin
     end;
   finally
     lTextureList.Free;
-    slFileNameList.Free;
     nif.Free;
   end;
   AddMessage('ReplaceFaceGenTexturePath finished.');
@@ -298,6 +312,18 @@ begin
       AddMessage('  The texture set has been changed: ' + EditorID(textureSetRecord));
   end;
 
+end;
+
+function IsFaceGenHeadShape(shapeBlock: TwbNifBlock): boolean;
+var
+  shaderProp: TwbNifBlock;
+begin
+  Result := false;
+  shaderProp := shapeBlock.PropertyByType('BSLightingShaderProperty', True);
+  if not Assigned(shaderProp) then
+    Exit;
+
+  Result := shaderProp.NativeValues['Shader Flags 1\Facegen_Detail_Map'];
 end;
 
 function Initialize: integer;
@@ -455,7 +481,7 @@ begin
       end;
     end
     else begin
-      AddMessage('This Armor Addon is not native. Processing will be skip.');
+      AddMessage(EditorID(armaRecord) + ' is not native. Processing will be skip.');
       Continue;
     end;
   end;
