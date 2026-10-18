@@ -1,9 +1,9 @@
 unit NPC_DeStandalonizer;
 
+uses 'xEdit_mmskCommonLibrary\xEdit_mmskCommonLibrary';
+
 const
-  FACEGEN_TEXTURE_PATH_FEMALE = 'textures\actors\character\female';
-  FACEGEN_TEXTURE_PATH_MALE   = 'textures\actors\character\male';
-  FACEGEN_TEXTURE_PATH_MSN    = 'textures\actors\character';
+  FACEGEN_TEXTURE_PATH_BASE   = 'textures\actors\character';
   FACEGEN_TEXTURE_PATH_BLANK  = 'textures\actors\Character\Male\BlankDetailmap.dds';
 
   TEX_SLOT_DIFFUSE    = 0;
@@ -29,6 +29,44 @@ var
   slBasicRaceList: TStringList;
   keepOriginalSkin: boolean;
 
+procedure ResolveFaceGenHeadTexturePaths_Vanilla(raceName: string; isFemale: boolean; var slFaceGenTexturePaths: TstringList);
+var
+  headKey, msnTexturePath: string;
+begin
+  if isFemale then begin
+    headKey := '\female\femalehead';
+    if raceName = 'Nord' then
+      msnTexturePath := FACEGEN_TEXTURE_PATH_BASE + '\female\femalehead_msn.dds'
+    else if raceName = 'WoodElf' then
+      msnTexturePath := FACEGEN_TEXTURE_PATH_BASE + '\highelffemale\femalehead_msn.dds'
+    else if raceName = 'Orc' then
+      msnTexturePath := FACEGEN_TEXTURE_PATH_BASE + '\femaleorc\femaleheadorc_msn.dds'
+    else
+      msnTexturePath := FACEGEN_TEXTURE_PATH_BASE + '\' + raceName + 'female\femalehead_msn.dds';
+  end
+  else begin
+    headKey := '\male\malehead';
+    if raceName = 'Nord' then
+      msnTexturePath := FACEGEN_TEXTURE_PATH_BASE + '\male\malehead_msn.dds'
+    else if raceName = 'Orc' then
+      msnTexturePath := FACEGEN_TEXTURE_PATH_BASE + '\orcmale\maleheadorc_msn.dds'
+    else
+      msnTexturePath := FACEGEN_TEXTURE_PATH_BASE + '\' + raceName + 'male\malehead_msn.dds';
+  end;
+
+  slFaceGenTexturePaths.Values['Diffuse']    := FACEGEN_TEXTURE_PATH_BASE + headKey + '.dds';
+  slFaceGenTexturePaths.Values['Normal']     := msnTexturePath;
+  slFaceGenTexturePaths.Values['Subsurface'] := FACEGEN_TEXTURE_PATH_BASE + headKey + '_sk.dds';
+  slFaceGenTexturePaths.Values['Detail']     := FACEGEN_TEXTURE_PATH_BLANK;
+  slFaceGenTexturePaths.Values['Specular']   := FACEGEN_TEXTURE_PATH_BASE + headKey + '_s.dds';
+
+    AddMessage('Resolved FaceGen Texture Paths.');
+end;
+
+{procedure ResolveFaceGenHeadTexturePaths_COtR(raceName: string; isFemale: boolean; var defaultTexturePath, msnTexturePath: string);
+begin
+end;}
+
 procedure ReplaceFaceGenTexturePath(faceMeshPath, raceName: string; isFemale: boolean);
 var
   nif                   : TwbNifFile;
@@ -36,6 +74,7 @@ var
   textureSetBlock       : TwbNifBlock;
   element, texElement   : TdfElement;
   lTextureList          : TList;
+  slFaceGenTexturePaths : TStringList;
   i, j                  : Integer;
   headKey, fileName,
   defaultTexturePath, oldTexturePath,
@@ -54,33 +93,12 @@ begin
     nif.LoadFromFile(faceMeshPath);
 
     lTextureList := TList.Create;
-
-    if isFemale then
-      headKey := 'femalehead'
-    else
-      headKey := 'malehead';
+    slFaceGenTexturePaths := TStringList.Create;
 
     AddMessage('Processing FaceGen NIF: ' + faceMeshPath);
 
     // デフォルトのテクスチャパスを取得する
-    if isFemale then begin
-      defaultTexturePath := FACEGEN_TEXTURE_PATH_FEMALE;
-      if raceName = 'Nord' then
-        msnTexturePath := FACEGEN_TEXTURE_PATH_MSN + '\Female\femalehead_msn.dds'
-      else if raceName = 'WoodElf' then
-        msnTexturePath := FACEGEN_TEXTURE_PATH_MSN + '\HighElfFemale\femalehead_msn.dds'
-      else
-        msnTexturePath := FACEGEN_TEXTURE_PATH_MSN + '\' + raceName + 'Female\femalehead_msn.dds';
-    end
-    else begin
-      defaultTexturePath := FACEGEN_TEXTURE_PATH_MALE;
-      if raceName = 'Nord' then
-        msnTexturePath := FACEGEN_TEXTURE_PATH_MSN + '\Male\malehead_msn.dds'
-      else
-        msnTexturePath := FACEGEN_TEXTURE_PATH_MSN + '\' + raceName + 'Male\malehead_msn.dds';
-    end;
-
-    AddMessage('set default texture path: ' + defaultTexturePath);
+    ResolveFaceGenHeadTexturePaths_Vanilla(raceName, isFemale, slFaceGenTexturePaths);
 
     for i := 0 to nif.BlocksCount - 1 do begin
       nifBlock := nif.Blocks[i];
@@ -118,10 +136,6 @@ begin
 
       element := textureSetBlock.Elements['Textures'];
 
-        if (i <> TEX_SLOT_DIFFUSE) and (i <> TEX_SLOT_NORMAL) and
-           (i <> TEX_SLOT_SUBSURFACE) and (i <> TEX_SLOT_DETAIL) and (i <> TEX_SLOT_SPECULAR) then
-          continue;
-
         texElement := TdfElement(element[i]);
         if texElement.EditValue = '' then
           continue;
@@ -131,15 +145,17 @@ begin
 
         case i of
           TEX_SLOT_DIFFUSE:
-            newTexturePath := defaultTexturePath + '\' + headKey + '.dds';
+            newTexturePath := slFaceGenTexturePaths.Values['Diffuse'];
           TEX_SLOT_NORMAL:
-            newTexturePath := msnTexturePath;
+            newTexturePath := slFaceGenTexturePaths.Values['Normal'];
           TEX_SLOT_SUBSURFACE:
-            newTexturePath := defaultTexturePath + '\' + headKey + '_sk.dds';
-          TEX_SLOT_SPECULAR:
-            newTexturePath := defaultTexturePath + '\' + headKey + '_S.dds';
+            newTexturePath := slFaceGenTexturePaths.Values['Subsurface'];
           TEX_SLOT_DETAIL:
-            newTexturePath := FACEGEN_TEXTURE_PATH_BLANK;
+            newTexturePath := slFaceGenTexturePaths.Values['Detail'];
+          TEX_SLOT_SPECULAR:
+            newTexturePath := slFaceGenTexturePaths.Values['Specular'];
+          else
+            continue;
         end;
 
         if SameText(oldTexturePath, newTexturePath) then begin
@@ -162,6 +178,7 @@ begin
     end;
   finally
     lTextureList.Free;
+    slFaceGenTexturePaths.Free;
     nif.Free;
   end;
   AddMessage('ReplaceFaceGenTexturePath finished.');
@@ -356,7 +373,7 @@ begin
 end;
 
 function Process(e: IInterface): integer;
-var npcRecord, npcFlags, npcRace, targetWNAM: IInterface;
+var npcRecord, npcRace, targetWNAM: IInterface;
     armatureList, armaEntry, armaRecord, armaMaster: IInterface;
     npcRaceRecord, targetWNAMRecord: IwbMainRecord;
     npcFlagsNative, defaultTextureFormID, i: Cardinal;
@@ -423,8 +440,7 @@ begin
   end;
 
   // 男女の判定
-  npcFlags  := ElementByPath(npcRecord, 'ACBS');
-  isFemale := GetElementEditValues(npcFlags, 'Flags\Female') = '1';
+  isFemale := IsNPCFemale(npcRecord);
   if isFemale then begin
     AddMessage(GetElementEditValues(npcRecord, 'EDID') + ' is Female');
   end
