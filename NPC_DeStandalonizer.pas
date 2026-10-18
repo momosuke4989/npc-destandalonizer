@@ -27,7 +27,66 @@ const
 var
   skyrimesm: IInterface;
   slBasicRaceList: TStringList;
+  headType: string;
   keepOriginalSkin: boolean;
+
+// フレームワーク選択（チェックボックス方式、排他制御あり）
+// 複数選択された場合はエラーを表示して再選択させる
+function SelectHeadType: string;
+var
+  opts, disableOpts: TStringList;
+  vanillaSelected, cotrSelected, ubeSelected: Boolean;
+  selectedCount: Integer;
+begin
+  Result := '';
+  opts := TStringList.Create;
+  disableOpts := TStringList.Create;
+  try
+    opts.Values['Vanilla and High Poly Head'] := 'False';
+    opts.Values['COTR'] := 'False';
+    //opts.Values['UBE'] := 'False';
+
+    if not ShowCheckboxForm(opts, disableOpts, 'Select Head Type (choose only one)') then begin
+      AddMessage('Selection was canceled.');
+      Exit;
+    end;
+
+    vanillaSelected := GetBoolSLValue(opts.Values['Vanilla and High Poly Head']);
+    cotrSelected        := GetBoolSLValue(opts.Values['COTR']);
+    //ubeSelected     := GetBoolSLValue(opts.Values['UBE']);
+
+    selectedCount := 0;
+    if vanillaSelected then Inc(selectedCount);
+    if cotrSelected then Inc(selectedCount);
+    //if ubeSelected then Inc(selectedCount);
+    // AddMessage('Selected Count: ' + IntToStr(selectedCount));
+
+    // 複数選択された場合はエラーを表示して再選択させる
+    if selectedCount > 1 then begin
+      MessageDlg('Please select only one head type.', mtError, [mbOK], 0);
+      Result := SelectHeadType; // 再選択
+      Exit;
+    end;
+
+    // 何も選択されなかった場合もエラーを表示して再選択させる
+    if selectedCount = 0 then begin
+      MessageDlg('Please select a head type.', mtError, [mbOK], 0);
+      Result := SelectHeadType; // 再選択
+      Exit;
+    end;
+
+    if vanillaSelected then
+      Result := 'Vanilla'
+    else if cotrSelected then
+      Result := 'COTR'
+    else if ubeSelected then
+      Result := 'UBE';
+
+  finally
+    opts.Free;
+    disableOpts.Free;
+  end;
+end;
 
 procedure ResolveFaceGenHeadTexturePaths_Vanilla(raceName: string; isFemale: boolean; var slFaceGenTexturePaths: TstringList);
 var
@@ -60,12 +119,34 @@ begin
   slFaceGenTexturePaths.Values['Detail']     := FACEGEN_TEXTURE_PATH_BLANK;
   slFaceGenTexturePaths.Values['Specular']   := FACEGEN_TEXTURE_PATH_BASE + headKey + '_s.dds';
 
-    AddMessage('Resolved FaceGen Texture Paths.');
+  AddMessage('Resolved FaceGen Texture Paths.');
 end;
 
-{procedure ResolveFaceGenHeadTexturePaths_COtR(raceName: string; isFemale: boolean; var defaultTexturePath, msnTexturePath: string);
+procedure ResolveFaceGenHeadTexturePaths_COtR(raceName: string; isFemale: boolean; var slFaceGenTexturePaths: TstringList);
+var
+  headKey, msnTexturePath: string;
 begin
-end;}
+  if isFemale then begin
+    headKey := 'Textures\!COR\Head\FemaleHead';
+    if raceName = 'DarkElf' then
+      msnTexturePath := 'Textures\!COR\Head\DarkElf\FemaleHead_msn.dds'
+    else
+      msnTexturePath := headKey + '_msn.dds'
+  end
+  else begin
+    headKey := 'Textures\!COR_Male\Head\MaleHead';
+    msnTexturePath := headKey + '_msn.dds'
+  end;
+
+
+  slFaceGenTexturePaths.Values['Diffuse']    := headKey + '.dds';
+  slFaceGenTexturePaths.Values['Normal']     := msnTexturePath;
+  slFaceGenTexturePaths.Values['Subsurface'] := headKey + '_sk.dds';
+  slFaceGenTexturePaths.Values['Detail']     := FACEGEN_TEXTURE_PATH_BLANK;
+  slFaceGenTexturePaths.Values['Specular']   := headKey + '_s.dds';
+
+  AddMessage('Resolved FaceGen Texture Paths.');
+end;
 
 procedure ReplaceFaceGenTexturePath(faceMeshPath, raceName: string; isFemale: boolean);
 var
@@ -98,7 +179,10 @@ begin
     AddMessage('Processing FaceGen NIF: ' + faceMeshPath);
 
     // デフォルトのテクスチャパスを取得する
-    ResolveFaceGenHeadTexturePaths_Vanilla(raceName, isFemale, slFaceGenTexturePaths);
+    if headType = 'Vanilla' then
+      ResolveFaceGenHeadTexturePaths_Vanilla(raceName, isFemale, slFaceGenTexturePaths)
+    else if headType = 'COTR' then
+      ResolveFaceGenHeadTexturePaths_COtR(raceName, isFemale, slFaceGenTexturePaths);
 
     for i := 0 to nif.BlocksCount - 1 do begin
       nifBlock := nif.Blocks[i];
@@ -221,8 +305,9 @@ end;
 
 function HasBipedSlot(armaRecord: IInterface; slotLabel: string): boolean;
 begin
-  Result := GetElementEditValues(armaRecord,
-    'BOD2 - Biped Body Template\First Person Flags\' + slotLabel) = '1';
+  Result :=
+    (GetElementEditValues(armaRecord, 'BOD2 - Biped Body Template\First Person Flags\' + slotLabel) = '1') or
+    (GetElementEditValues(armaRecord, 'BODT - Body Template\First Person Flags\' + slotLabel) = '1');
 end;
 
 function ResolveDefaultAssetKey(armaRecord: IInterface): string;
@@ -359,7 +444,8 @@ begin
   slBasicRaceList.Add('RedguardRace');
   slBasicRaceList.Add('WoodElfRace');
 
-
+  headType := SelectHeadType;
+  AddMessage('  selected head type: ' + headType);
 
   keepOriginalSkin := false;
   if MessageDlg(
