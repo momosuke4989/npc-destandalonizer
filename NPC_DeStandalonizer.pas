@@ -3,6 +3,12 @@ unit NPC_DeStandalonizer;
 uses 'xEdit_mmskCommonLibrary\xEdit_mmskCommonLibrary';
 
 const
+  // Setting default values ​​for options
+  // This constant defines the initial value for the checkbox option.
+  // If you want it to be checked by default, change `false` to `true`.
+  KEEP_ORIGINAL_SKIN_DEFAULT = 'false';
+  KEEP_ORIGINAL_DETAIL_DEFAULT = 'false';
+
   FACEGEN_TEXTURE_PATH_BASE   = 'textures\actors\character';
   FACEGEN_TEXTURE_PATH_BLANK  = 'textures\actors\Character\Male\BlankDetailmap.dds';
 
@@ -28,7 +34,7 @@ var
   skyrimesm: IInterface;
   slBasicRaceList: TStringList;
   headType: string;
-  keepOriginalSkin: boolean;
+  keepOriginalSkin, keepOriginalDetail: boolean;
 
 // フレームワーク選択（チェックボックス方式、排他制御あり）
 // 複数選択された場合はエラーを表示して再選択させる
@@ -247,6 +253,12 @@ begin
           continue;
         end;
 
+        if i = TEX_SLOT_DETAIL then begin
+          if keepOriginalDetail then begin
+            AddMessage('Keep original FaceGen Detail Texture: ' + oldTexturePath);
+            continue;
+          end;
+        end;
         texElement.EditValue := newTexturePath;
         AddMessage('Change FaceGen Skin Texture Path: ' + oldTexturePath + ' -> ' + newTexturePath);
         texturePathChanged := true;
@@ -429,7 +441,12 @@ begin
 end;
 
 function Initialize: integer;
+var
+  slOpts, slDisableOpts: TStringList;
+  checkBoxCaption: string;
+  i: Integer;
 begin
+  Result := 0;
   skyrimesm := FileByIndex(0);
 
   slBasicRaceList := TStringList.Create;
@@ -444,18 +461,44 @@ begin
   slBasicRaceList.Add('RedguardRace');
   slBasicRaceList.Add('WoodElfRace');
 
+  keepOriginalSkin := false;
+  keepOriginalDetail := false;
+
   headType := SelectHeadType;
   AddMessage('  selected head type: ' + headType);
 
-  keepOriginalSkin := false;
-  if MessageDlg(
-    'Do you want to change the skin texture to the default?' + #13#10 +
-    'Yes = Revert both the skin texture and body mesh to default.' + #13#10 +
-    'No = Revert only the body mesh to default.' + #13#10
-    , mtConfirmation, [mbYes, mbNo], 0
-  ) = mrNo then
-  keepOriginalSkin := true;
-  Result := 0;
+  slOpts                := TStringList.Create;
+  slDisableOpts         := TStringList.Create;
+
+  checkBoxCaption             := 'Choose De-Standalonizer Option';
+
+  // 各オプションの設定
+  try
+
+    slOpts.Values['Keep original skin texture'] := KEEP_ORIGINAL_SKIN_DEFAULT;
+    slOpts.Values['Keep original FaceGen detail texture'] := KEEP_ORIGINAL_DETAIL_DEFAULT;
+
+    if ShowCheckboxForm(slOpts, slDisableOpts, checkBoxCaption) then
+    begin
+      AddMessage('You selected:');
+      for i := 0 to slOpts.Count - 1 do
+        AddMessage('  ' + slOpts.Names[i] + ' - ' + slOpts.ValueFromIndex[i]);
+    end
+    else begin
+      AddMessage('Selection was canceled.');
+      Result := ISOLATE_ABORT;
+      Exit;
+    end;
+
+    // オプションの選択状況をグローバル変数に反映する
+    keepOriginalSkin := GetBoolSLValue(slOpts.Values['Keep original skin texture']);
+    keepOriginalDetail := GetBoolSLValue(slOpts.Values['Keep original FaceGen detail texture']);
+
+  finally
+    slOpts.Free;
+    slDisableOpts.Free;
+  end;
+
 end;
 
 function Process(e: IInterface): integer;
