@@ -6,8 +6,9 @@ const
   // Setting default values ​​for options
   // This constant defines the initial value for the checkbox option.
   // If you want it to be checked by default, change `false` to `true`.
-  KEEP_ORIGINAL_SKIN_DEFAULT = 'false';
-  KEEP_ORIGINAL_DETAIL_DEFAULT = 'false';
+  KEEP_ORIGINAL_SKIN_OPTION_DEFAULT = 'false';
+  KEEP_DETAIL_MAP_OPTION_DEFAULT = 'false';
+  KEEP_WORN_ARMOR_OPTION_DEFAULT = 'false';
 
   FACEGEN_TEXTURE_PATH_BASE   = 'textures\actors\character';
   FACEGEN_TEXTURE_PATH_BLANK  = 'textures\actors\Character\Male\BlankDetailmap.dds';
@@ -34,7 +35,7 @@ var
   skyrimesm: IInterface;
   slBasicRaceList: TStringList;
   headType: string;
-  keepOriginalSkin, keepOriginalDetail: boolean;
+  keepOriginalSkin, keepOriginalDetail, keepWornArmor: boolean;
 
 // フレームワーク選択（チェックボックス方式、排他制御あり）
 // 複数選択された場合はエラーを表示して再選択させる
@@ -475,8 +476,8 @@ begin
   // 各オプションの設定
   try
 
-    slOpts.Values['Keep original skin texture'] := KEEP_ORIGINAL_SKIN_DEFAULT;
-    slOpts.Values['Keep original FaceGen detail texture'] := KEEP_ORIGINAL_DETAIL_DEFAULT;
+    slOpts.Values['Keep original skin texture'] := KEEP_ORIGINAL_SKIN_OPTION_DEFAULT;
+    slOpts.Values['Keep original FaceGen detail texture'] := KEEP_DETAIL_MAP_OPTION_DEFAULT;
 
     if ShowCheckboxForm(slOpts, slDisableOpts, checkBoxCaption) then
     begin
