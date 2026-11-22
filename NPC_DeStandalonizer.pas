@@ -441,6 +441,52 @@ begin
   Result := shaderProp.NativeValues['Shader Flags 1\Facegen_Detail_Map'];
 end;
 
+Procedure UpdateSkinArmatures(skinArmoRecord, targetFile: IInterface; isFemale: boolean);
+var
+  armatureList, armaEntry, armaRecord, armaMaster: IInterface;
+  slotLabel: string;
+  defaultModelPath: string;
+  defaultTextureFormID: Cardinal;
+  isNativeAARecord: Boolean;
+  i: Integer;
+begin
+  // WNAMレコードからさかのぼってArmorAddonを取得し、その参照先を変更する
+  armatureList := ElementByName(skinArmoRecord, 'Armature');
+  if not Assigned(armatureList) then begin
+    AddMessage(EditorID(skinArmoRecord) + ' : No Armature list');
+    Exit;
+  end;
+
+  for i := 0 to ElementCount(armatureList) - 1 do begin
+    armaEntry := ElementByIndex(armatureList, i);
+    armaRecord := LinksTo(armaEntry);
+
+    armaMaster := MasterOrSelf(armaRecord);
+    isNativeAARecord := Equals(GetFile(armaMaster), targetFile);
+
+    if isNativeAARecord then begin
+      slotLabel := ResolveDefaultAssetKey(armaRecord);
+      AddMessage('Processing Armor Addon: ' + EditorID(armaRecord));
+      if slotLabel = '' then
+      begin
+        AddMessage('This Armor Addon is not a body part: ' + EditorID(armaRecord));
+        Continue;
+      end
+      else
+      begin
+        AddMessage('ArmorAddon slot:' + slotLabel);
+        defaultModelPath := GetDefaultModelPath(slotLabel, isFemale);
+        defaultTextureFormID := GetDefaultTextureFormID(slotLabel, isFemale);
+        UpdateArmaModel(armaRecord, defaultModelPath, defaultTextureFormID, isFemale);
+      end;
+    end
+    else begin
+      AddMessage(EditorID(armaRecord) + ' is not native. Processing will be skip.');
+      Continue;
+    end;
+  end;
+end;
+
 function Initialize: integer;
 var
   slOpts, slDisableOpts: TStringList;
@@ -464,6 +510,7 @@ begin
 
   keepOriginalSkin := false;
   keepOriginalDetail := false;
+  keepWornArmor := false;
 
   headType := SelectHeadType;
   AddMessage('  selected head type: ' + headType);
@@ -478,6 +525,7 @@ begin
 
     slOpts.Values['Keep original skin texture'] := KEEP_ORIGINAL_SKIN_OPTION_DEFAULT;
     slOpts.Values['Keep original FaceGen detail texture'] := KEEP_DETAIL_MAP_OPTION_DEFAULT;
+    slOpts.Values['Keep Worn Armor'] := KEEP_WORN_ARMOR_OPTION_DEFAULT;
 
     if ShowCheckboxForm(slOpts, slDisableOpts, checkBoxCaption) then
     begin
@@ -487,14 +535,14 @@ begin
     end
     else begin
       AddMessage('Selection was canceled.');
-      Result := ISOLATE_ABORT;
+      Result := -1;
       Exit;
     end;
 
     // オプションの選択状況をグローバル変数に反映する
     keepOriginalSkin := GetBoolSLValue(slOpts.Values['Keep original skin texture']);
     keepOriginalDetail := GetBoolSLValue(slOpts.Values['Keep original FaceGen detail texture']);
-
+    keepWornArmor := GetBoolSLValue(slOpts.Values['Keep Worn Armor']);
   finally
     slOpts.Free;
     slDisableOpts.Free;
@@ -512,6 +560,7 @@ var npcRecord, npcRace, targetWNAM: IInterface;
     defaultModelPath: string;
 
 begin
+  Result := 0;
   // NPCのレコードかどうか判定
   if Signature(e) <> 'NPC_' then begin
     AddMessage(GetElementEditValues(e, 'EDID') + ' is not NPC record.');
@@ -590,49 +639,29 @@ begin
   // ボディの処理
   // NPCレコードに設定されているWNAMがあればそれを対象にする
   // なければ、種族に設定されているWNAMレコードを対象にする。
+  if not keepWornArmor then begin
+    if Assigned(ElementByPath(npcRecord, 'WNAM')) then begin
+      RemoveElement(npcRecord, 'WNAM');
+      AddMessage('Removed WNAM from NPC: ' + GetElementEditValues(npcRecord, 'EDID'));
+    end;
+  end;
+
+  // NPCにWNAMが残っていればそれを、無ければ種族のWNAMを処理対象にする
   if Assigned(ElementByPath(npcRecord, 'WNAM')) then
     targetWNAM := ElementByPath(npcRecord, 'WNAM')
   else
     targetWNAM := ElementByPath(npcRaceRecord, 'WNAM');
-  targetWNAMRecord := MasterOrSelf(LinksTo(targetWNAM));
 
-  // WNAMレコードからさかのぼってArmorAddonを取得し、その参照先を変更する
-  armatureList := ElementByName(targetWNAMRecord, 'Armature');
-  if not Assigned(armatureList) then begin
-    AddMessage(EditorID(targetWNAMRecord) + ' : No Armature list');
+  if not Assigned(targetWNAM) or not Assigned(LinksTo(targetWNAM)) then begin
+    AddMessage('No WNAM to process for ' + GetElementEditValues(npcRecord, 'EDID') + '. Skipping body.');
     Exit;
   end;
+  targetWNAMRecord := MasterOrSelf(LinksTo(targetWNAM));
 
-  for i := 0 to ElementCount(armatureList) - 1 do begin
-    armaEntry := ElementByIndex(armatureList, i);
-    armaRecord := LinksTo(armaEntry);
 
-    armaMaster := MasterOrSelf(armaRecord);
-    isNativeAARecord := Equals(GetFile(armaMaster), GetFile(npcRecord));
+  UpdateSkinArmatures(targetWNAMRecord, GetFile(npcRecord), isFemale);
+  AddMessage('Updated skin armatures for ' + GetElementEditValues(npcRecord, 'EDID') + '.');
 
-    if isNativeAARecord then begin
-      slotLabel := ResolveDefaultAssetKey(armaRecord);
-      AddMessage('Processing Armor Addon: ' + EditorID(armaRecord));
-      if slotLabel = '' then
-      begin
-        AddMessage('This Armor Addon is not a body part: ' + EditorID(armaRecord));
-        Continue;
-      end
-      else
-      begin
-        AddMessage('ArmorAddon slot:' + slotLabel);
-        defaultModelPath := GetDefaultModelPath(slotLabel, isFemale);
-        defaultTextureFormID := GetDefaultTextureFormID(slotLabel, isFemale);
-        UpdateArmaModel(armaRecord, defaultModelPath, defaultTextureFormID, isFemale);
-      end;
-    end
-    else begin
-      AddMessage(EditorID(armaRecord) + ' is not native. Processing will be skip.');
-      Continue;
-    end;
-  end;
-
-  Result := 0;
 end;
 
 function Finalize: integer;
